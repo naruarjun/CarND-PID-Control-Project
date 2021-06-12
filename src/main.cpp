@@ -4,10 +4,24 @@
 #include <string>
 #include "json.hpp"
 #include "PID.h"
+#include <algorithm>
+
+//BEST CTE: 0.0857032 Twiddle Stage: 0 Twiddle VAR: 2 dp: 0.00428238 0.000471013 0.00213227 -0.174496 0 -0.0283478 
+
+//BEST CTE: 0.0840189 Twiddle Stage: 0 Twiddle VAR: 1 dp: 0.00108852 0.000133028 0.000736042 -0.174496 0 -0.0274299 dpi = [0.01, 0.01, 0.01] and K = [0,0,0] tolerance 0.002
+
+//BEST CTE: 0.0369817 Twiddle Stage: 0 Twiddle VAR: 2 dp: 0.00428238 0.000471013 0.00142739 -0.185312 0 -3.0286 dpi = [0.01, 0.01, 0.01] and K = [0,0,-3] tolerance 0.002
+
+// Kp : -0.189594 Ki : 0 Kd : -3.02859 final params
+
 
 // for convenience
 using nlohmann::json;
 using std::string;
+
+bool twiddle = false;
+bool twiddle_complete = false;
+int n = 0;
 
 // For converting back and forth between radians and degrees.
 constexpr double pi() { return M_PI; }
@@ -29,15 +43,20 @@ string hasData(string s) {
   }
   return "";
 }
-
+double crosstrack_error = 0;
 int main() {
   uWS::Hub h;
 
   PID pid;
-  /**
-   * TODO: Initialize the pid variable.
-   */
-
+  // multiple runs were needed to complete twiddle
+  //pid.Init(-0.091,-0.0005,-1.693);
+  //pid.Init(0,0,-3);
+  //pid.Init(-0.174496,0,-0.0283478);
+  //pid.Init(-0.174496,0,-3); //0.0274299);
+  //pid.Init(-0.225,-0.0004,-4);
+  //pid.Init(-0.185312 ,0 ,-3.0286);
+  // Initialize PID
+  pid.Init(-0.189594, 0, -3.02859);
   h.onMessage([&pid](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length, 
                      uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
@@ -57,22 +76,63 @@ int main() {
           double speed = std::stod(j[1]["speed"].get<string>());
           double angle = std::stod(j[1]["steering_angle"].get<string>());
           double steer_value;
+          double throttle = 0.4;
           /**
            * TODO: Calculate steering value here, remember the steering value is
            *   [-1, 1].
            * NOTE: Feel free to play around with the throttle and speed.
            *   Maybe use another PID controller to control the speed!
            */
+
+          pid.UpdateError(cte);
+          steer_value = pid.TotalError();
+
+          if(fabs(cte) > 0.5){
+            throttle = 0.2;
+          }
+          if(fabs(cte) > 1.0){
+            throttle = 0.1;
+          }
+          if(fabs(cte) > 1.5){
+            throttle = 0.05;
+          }
+
+
+          if(twiddle){
+            if(!pid.twiddle_complete){
+              if(n==0){
+                n+=1;
+              }else{
+                if(n>=500){
+                  crosstrack_error += pow(cte, 2);
+                }
+              }
+              n+=1;
+              if(n>1000){
+                pid.ContinueTwiddle(crosstrack_error/500);
+                crosstrack_error = 0;
+                n = 0;
+                std::string reset_msg = "42[\"reset\",{}]";
+                ws.send(reset_msg.data(), reset_msg.length(), uWS::OpCode::TEXT);
+              }
+            }else if(!twiddle_complete){
+              twiddle_complete = true;
+              std::cout << "Kp : " << pid.Kp << " Ki : " << pid.Ki << " Kd : " << pid.Kd << std::endl;
+              std::string reset_msg = "42[\"reset\",{}]";
+              ws.send(reset_msg.data(), reset_msg.length(), uWS::OpCode::TEXT);
+            }
+          }
+
           
           // DEBUG
-          std::cout << "CTE: " << cte << " Steering Value: " << steer_value 
-                    << std::endl;
+          // std::cout << "CTE: " << cte << " Steering Value: " << steer_value << " throttle " << throttle 
+          //           << std::endl;
 
           json msgJson;
           msgJson["steering_angle"] = steer_value;
-          msgJson["throttle"] = 0.3;
+          msgJson["throttle"] = throttle;
           auto msg = "42[\"steer\"," + msgJson.dump() + "]";
-          std::cout << msg << std::endl;
+          //std::cout << msg << std::endl;
           ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
         }  // end "telemetry" if
       } else {

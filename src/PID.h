@@ -1,6 +1,8 @@
 #ifndef PID_H
 #define PID_H
 
+#include <vector>
+
 class PID {
  public:
   /**
@@ -31,6 +33,14 @@ class PID {
    */
   double TotalError();
 
+  void ContinueTwiddle(double error);
+
+  bool twiddle_complete;
+
+    double Kp;
+    double Ki;
+    double Kd;
+
  private:
   /**
    * PID Errors
@@ -42,9 +52,18 @@ class PID {
   /**
    * PID Coefficients
    */ 
-  double Kp;
-  double Ki;
-  double Kd;
+
+
+
+  double tolerance;
+  int twiddle_stage;
+  int twiddle_var_num;
+  double minimum_crosstrack;
+  //std::vector<double> dp = {0.01,0.01,0.01};
+  //std::vector<double> dp = {0.00428238,0.000471013,0.00213227};
+  //std::vector<double> dp = {0.0225,0.00004,0.4};
+  //std::vector<double> dp = {0.01, 0.01, 0.01};
+  std::vector<double> dp = {0.00428238 ,0.000471013 ,0.00142739};
 };
 
 #endif  // PID_H
